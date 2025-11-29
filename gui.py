@@ -1,56 +1,84 @@
 # ----------------------------
 # FILE: gui.py
-# Tkinter-based GUI. Encapsulated inside class PMRSApp and function start_app().
+# Modern PMRS GUI using ttkbootstrap
 # ----------------------------
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
+from tkinter import messagebox, filedialog
+from crud import PatientCRUD
+from data_utils import db_to_dataframe
+from graph_report import generate_pdf_report
 
 class PMRSApp:
     def __init__(self, root, crud_obj):
         self.root = root
         self.root.title('PMRS - Patient Management Record System')
+        self.root.geometry('950x600')
         self.crud = crud_obj
+
+        # ttkbootstrap style
+        self.style = tb.Style()
+
+        # Build the UI
         self._build_ui()
         self._refresh_list()
 
     def _build_ui(self):
-        frm = ttk.Frame(self.root, padding=8)
-        frm.pack(fill='both', expand=True)
+        # Main frame
+        main_frame = tb.Frame(self.root, padding=10)
+        main_frame.pack(fill='both', expand=True)
 
-        # Form
-        form = ttk.LabelFrame(frm, text='Patient Form', padding=8)
-        form.pack(side='top', fill='x')
+        # ----- Left Frame: Form -----
+        form_frame = tb.Labelframe(main_frame, text='Patient Form', padding=10)
+        form_frame.pack(side=LEFT, fill='y', padx=(0,10))
+
         labels = ['First name','Last name','Age','Gender','Contact','Diagnosis','Notes']
         self.entries = {}
-        for i,l in enumerate(labels):
-            ttk.Label(form, text=l).grid(row=i, column=0, sticky='w')
-            ent = ttk.Entry(form, width=40)
-            ent.grid(row=i, column=1, sticky='w')
+        for i, l in enumerate(labels):
+            tb.Label(form_frame, text=l).grid(row=i, column=0, sticky='w', pady=4)
+            ent = tb.Entry(form_frame, width=30)
+            ent.grid(row=i, column=1, pady=4, sticky='w')
             self.entries[l.lower().replace(' ','_')] = ent
 
-        btn_frame = ttk.Frame(form)
-        btn_frame.grid(row=0, column=2, rowspan=3, padx=8)
-        ttk.Button(btn_frame, text='Add', command=self.add_patient).pack(fill='x')
-        ttk.Button(btn_frame, text='Update', command=self.update_patient).pack(fill='x')
-        ttk.Button(btn_frame, text='Delete', command=self.delete_patient).pack(fill='x')
-        ttk.Button(btn_frame, text='Export JSON', command=self.export_json).pack(fill='x')
-        ttk.Button(btn_frame, text='Generate Report', command=self.generate_report).pack(fill='x')
+        # Buttons (modern style)
+        btn_frame = tb.Frame(form_frame)
+        btn_frame.grid(row=len(labels), column=0, columnspan=2, pady=10)
 
-        # List
-        list_frame = ttk.LabelFrame(frm, text='Patients', padding=4)
-        list_frame.pack(fill='both', expand=True)
+        tb.Button(btn_frame, text='Add', bootstyle='success-outline', width=12, command=self.add_patient).grid(row=0, column=0, padx=5, pady=2)
+        tb.Button(btn_frame, text='Update', bootstyle='primary-outline', width=12, command=self.update_patient).grid(row=0, column=1, padx=5, pady=2)
+        tb.Button(btn_frame, text='Delete', bootstyle='danger-outline', width=12, command=self.delete_patient).grid(row=1, column=0, padx=5, pady=2)
+        tb.Button(btn_frame, text='Export JSON', bootstyle='info-outline', width=12, command=self.export_json).grid(row=1, column=1, padx=5, pady=2)
+        tb.Button(btn_frame, text='Generate Report', bootstyle='warning-outline', width=25, command=self.generate_report).grid(row=2, column=0, columnspan=2, pady=5)
+
+        # ----- Right Frame: Patient List -----
+        list_frame = tb.Labelframe(main_frame, text='Patient Records', padding=10)
+        list_frame.pack(side=RIGHT, fill='both', expand=True)
+
         cols = ('id','first_name','last_name','age','gender','contact')
-        self.tree = ttk.Treeview(list_frame, columns=cols, show='headings', selectmode='browse')
+        self.tree = tb.Treeview(list_frame, columns=cols, show='headings', bootstyle="info")
         for c in cols:
             self.tree.heading(c, text=c.title())
             self.tree.column(c, width=100)
         self.tree.pack(fill='both', expand=True)
         self.tree.bind('<<TreeviewSelect>>', self.on_select)
 
-    def _refresh_list(self):
+        # Optional: search bar
+        search_frame = tb.Frame(list_frame)
+        search_frame.pack(fill='x', pady=5)
+        tb.Label(search_frame, text="Search by Name:").pack(side=LEFT)
+        self.search_var = tb.StringVar()
+        tb.Entry(search_frame, textvariable=self.search_var, width=30).pack(side=LEFT, padx=5)
+        tb.Button(search_frame, text='Search', bootstyle='primary-outline', command=self.search_patient).pack(side=LEFT)
+
+    # --------------------
+    # CRUD methods
+    # --------------------
+    def _refresh_list(self, patients=None):
         for r in self.tree.get_children():
             self.tree.delete(r)
-        for p in self.crud.list_patients():
+        if patients is None:
+            patients = self.crud.list_patients()
+        for p in patients:
             self.tree.insert('', 'end', values=(p['id'], p['first_name'], p['last_name'], p['age'], p['gender'], p['contact']))
 
     def _read_form(self):
@@ -83,14 +111,9 @@ class PMRSApp:
         p = self.crud.get_patient(pid)
         if not p:
             return
-        # populate form
-        self.entries['first_name'].delete(0,'end'); self.entries['first_name'].insert(0,p.get('first_name',''))
-        self.entries['last_name'].delete(0,'end'); self.entries['last_name'].insert(0,p.get('last_name',''))
-        self.entries['age'].delete(0,'end'); self.entries['age'].insert(0,str(p.get('age','')))
-        self.entries['gender'].delete(0,'end'); self.entries['gender'].insert(0,p.get('gender',''))
-        self.entries['contact'].delete(0,'end'); self.entries['contact'].insert(0,p.get('contact',''))
-        self.entries['diagnosis'].delete(0,'end'); self.entries['diagnosis'].insert(0,p.get('diagnosis',''))
-        self.entries['notes'].delete(0,'end'); self.entries['notes'].insert(0,p.get('notes',''))
+        for k in self.entries:
+            self.entries[k].delete(0,'end')
+            self.entries[k].insert(0, p.get(k,''))
 
     def update_patient(self):
         sel = self.tree.selection()
@@ -114,16 +137,13 @@ class PMRSApp:
             self._refresh_list()
 
     def export_json(self):
-        p = filedialog.asksaveasfilename(defaultextension='.json', filetypes=[('JSON','*.json')])
-        if not p:
+        path = filedialog.asksaveasfilename(defaultextension='.json', filetypes=[('JSON','*.json')])
+        if not path:
             return
-        self.crud.export_json(p)
-        messagebox.showinfo('Export', f'Exported to {p}')
+        self.crud.export_json(path)
+        messagebox.showinfo('Export', f'Exported to {path}')
 
     def generate_report(self):
-        # gather df and call graph_report to make pdf
-        from data_utils import db_to_dataframe
-        from graph_report import generate_pdf_report
         df = db_to_dataframe(self.crud.db_path)
         path = filedialog.asksaveasfilename(defaultextension='.pdf', filetypes=[('PDF','*.pdf')])
         if not path:
@@ -131,9 +151,21 @@ class PMRSApp:
         generate_pdf_report(df, pdf_path=path)
         messagebox.showinfo('Report', f'Report saved to {path}')
 
+    # --------------------
+    # Search
+    # --------------------
+    def search_patient(self):
+        term = self.search_var.get().lower()
+        filtered = [p for p in self.crud.list_patients() if term in p['first_name'].lower() or term in p['last_name'].lower()]
+        self._refresh_list(filtered)
+
+
+# ----------------------------
+# Start the app
+# ----------------------------
 def start_app():
-    root = tk.Tk()
-    from crud import PatientCRUD
+    root = tb.Window(themename="superhero")
     crud = PatientCRUD()
     app = PMRSApp(root, crud)
     root.mainloop()
+    
