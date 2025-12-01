@@ -1,0 +1,2 @@
+id,first_name,middle_name,last_name,suffix,sex,birthdate,contact_no,height_cm,weight_kg,diagnosis,municipality,barangay,street,house_no,postal_code,notes,created_at,updated_at
+3,Jerson,Pol,Gattoc,,Male,2006-12-19,0954890393,158.0,54.0,Common Cold,Lupao,San Antonio Este,Purok 1,100,2112,Si jerson ito,2025-12-01 15:50:59,2025-12-01 15:50:59
