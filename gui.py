@@ -317,40 +317,40 @@ class PMRSApp:
 
     # ---------------- CRUD callbacks ----------------
     def add_patient(self):
-    """GUI callback: collect form data, validate and call Database.add_patient."""
-    try:
-        # Collect form data
-        patient = self._collect_patient_from_form()
-    except ValueError as ve:
-        # _collect_patient_from_form already throws a missing field error
-        messagebox.showwarning("Validation", str(ve))
-        return
-
-    # Final GUI-side validation (DB also checks)
-    required = ["first_name", "last_name", "sex", "birthdate"]
-    for field in required:
-        if not patient.get(field):
-            messagebox.showwarning("Validation", f"{field.replace('_', ' ').title()} is required.")
+        """GUI callback: collect form data, validate and call Database.add_patient."""
+        try:
+            # Collect form data
+            patient = self._collect_patient_from_form()
+        except ValueError as ve:
+            # _collect_patient_from_form already throws a missing field error
+            messagebox.showwarning("Validation", str(ve))
             return
-
-    try:
-        # Attempt to insert into database (duplicate-safe)
-        new_id = self.db.add_patient(patient)
-        messagebox.showinfo("Success", f"Patient added successfully (ID: {new_id}).")
-
-        # Reset form + refresh list
-        self.clear_form()
-        self._refresh_list()
-
-    except ValueError as ve:
-        # For expected issues like duplicates
-        messagebox.showwarning("Cannot Add Patient", str(ve))
-
-    except Exception as e:
-        # For unexpected errors
-        messagebox.showerror("Error", f"Failed to add patient: {e}")
-
-
+    
+        # Final GUI-side validation (DB also checks)
+        required = ["first_name", "last_name", "sex", "birthdate"]
+        for field in required:
+            if not patient.get(field):
+                messagebox.showwarning("Validation", f"{field.replace('_', ' ').title()} is required.")
+                return
+    
+        try:
+            # Attempt to insert into database (duplicate-safe)
+            new_id = self.db.add_patient(patient)
+            messagebox.showinfo("Success", f"Patient added successfully (ID: {new_id}).")
+    
+            # Reset form + refresh list
+            self.clear_form()
+            self._refresh_list()
+    
+        except ValueError as ve:
+            # For expected issues like duplicates
+            messagebox.showwarning("Cannot Add Patient", str(ve))
+    
+        except Exception as e:
+            # For unexpected errors
+            messagebox.showerror("Error", f"Failed to add patient: {e}")
+    
+    
 
 
     def update_patient(self):
@@ -371,7 +371,7 @@ class PMRSApp:
             self._refresh_list()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update patient: {e}")
-            
+
 
     def delete_patient(self, patient_id: int) -> None:
         """Delete patient and clean up orphaned address/diagnosis rows if unused."""
