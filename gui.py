@@ -10,10 +10,9 @@ Refactored Modern PMRS GUI (Nueva Ecija scope)
 import json
 import os
 import csv
-from datetime import date
+from datetime import date, datetime
 import tkinter as tk
 from tkinter import messagebox, filedialog
-
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 
@@ -318,18 +317,32 @@ class PMRSApp:
 
     # ---------------- CRUD callbacks ----------------
     def add_patient(self):
-        birth_iso = self._get_birthdate_iso()
-        if not birth_iso:
+        """GUI callback: collect form data, validate and call Database.add_patient."""
+        # collect from GUI
+        patient = self._collect_patient_from_form()
+
+        # basic validation; Database.add_patient will enforce required fields too
+        if not patient.get("birthdate"):
             messagebox.showwarning("Validation", "Birthdate is required. Please select month, day and year.")
             return
-        patient = self._collect_patient_from_form()
+        if not patient.get("first_name") or not patient.get("last_name") or not patient.get("sex"):
+            messagebox.showwarning("Validation", "First name, Last name and Sex are required.")
+            return
+
         try:
-            self.db.add_patient(patient)
+            # Database layer will check duplicates and insert
+            pid = self.db.add_patient(patient)
             messagebox.showinfo("Success", "Patient added.")
             self.clear_form()
             self._refresh_list()
+        except ValueError as ve:
+            # expected validation/duplicate errors from DB
+            messagebox.showwarning("Add failed", str(ve))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to add patient: {e}")
+
+
+
 
     def update_patient(self):
         sel = self.tree.selection()
@@ -349,30 +362,40 @@ class PMRSApp:
             self._refresh_list()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update patient: {e}")
+            
 
     def delete_patient(self, patient_id: int) -> None:
-        # Get patient first
-        patient = self.get_patient(patient_id)
-        if not patient:
+        """Delete patient and clean up orphaned address/diagnosis rows if unused."""
+        if not patient_id:
             return
-        
-        address_id = patient.get("address_id")
-        diagnosis_id = patient.get("diagnosis_id")
-    
-        # Delete the patient
-        self._execute("DELETE FROM patients WHERE id = ?", (patient_id,))
-    
-        # Clean up address if no other patient is using it
-        if address_id:
-            rows = self._execute("SELECT COUNT(*) FROM patients WHERE address_id = ?", (address_id,), fetch=True)
-            if rows and rows[0][0] == 0:
-                self._execute("DELETE FROM addresses WHERE id = ?", (address_id,))
-    
-        # Clean up diagnosis if no other patient is using it
-        if diagnosis_id:
-            rows = self._execute("SELECT COUNT(*) FROM patients WHERE diagnosis_id = ?", (diagnosis_id,), fetch=True)
-            if rows and rows[0][0] == 0:
-                self._execute("DELETE FROM diagnoses WHERE id = ?", (diagnosis_id,))
+        with self._conn() as conn:
+            conn.execute("PRAGMA foreign_keys = ON;")
+            cur = conn.cursor()
+            # get the referenced ids first
+            cur.execute("SELECT address_id, diagnosis_id FROM patients WHERE id = ?", (patient_id,))
+            row = cur.fetchone()
+            if not row:
+                return
+            address_id, diagnosis_id = row[0], row[1]
+
+            # delete patient
+            cur.execute("DELETE FROM patients WHERE id = ?", (patient_id,))
+
+            # if no other patient references the address, delete it
+            if address_id is not None:
+                cur.execute("SELECT COUNT(*) FROM patients WHERE address_id = ?", (address_id,))
+                cnt = cur.fetchone()[0]
+                if cnt == 0:
+                    cur.execute("DELETE FROM addresses WHERE id = ?", (address_id,))
+
+            # if no other patient references the diagnosis, delete it
+            if diagnosis_id is not None:
+                cur.execute("SELECT COUNT(*) FROM patients WHERE diagnosis_id = ?", (diagnosis_id,))
+                cnt = cur.fetchone()[0]
+                if cnt == 0:
+                    cur.execute("DELETE FROM diagnoses WHERE id = ?", (diagnosis_id,))
+
+            conn.commit()
 
 
 
