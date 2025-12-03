@@ -78,14 +78,6 @@ I learned how to take messy, rushed code and turn it into something clean, reada
 
 ---
 
-## 🖼️ Screenshots (Optional)
-
-> Add your screenshots here if you want:  
-> `./assets/screenshot_main.png`  
-> `./assets/screenshot_form.png`
-
----
-
 ## 🧩 Tech Stack
 
 - **Python 3.x**  
@@ -104,7 +96,7 @@ pip install -r requirements.txt
 
 # Run the app
 python gui.py
-
+```
 
 📌 Notes
 
