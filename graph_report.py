@@ -1,106 +1,148 @@
 # ----------------------------
 # FILE: graph_report.py
-# Improved PDF Report Generator with Platypus
+# Clean PDF Report Generator with Pie Chart + Master List
 # ----------------------------
 import matplotlib.pyplot as plt
-import io
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-from data_utils import dataframe_summary
-from reportlab.platypus import Table, TableStyle, SimpleDocTemplate, Spacer, Paragraph, Image
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
 import pandas as pd
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle,
+    Paragraph, Spacer, Image
+)
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.utils import ImageReader
 
 
-# ----------------------------
-# Histogram helper
-# ----------------------------
-def np_histogram(ages, bins):
-    s = pd.Series(ages)
-    counts = []
-    edges = list(bins)
-    for i in range(len(bins)-1):
-        lo, hi = bins[i], bins[i+1]
-        c = s[(s >= lo) & (s < hi)].count()
-        counts.append(int(c))
-    return counts, edges
+# ------------------------------------------------
+# Compute age from birthdate
+# ------------------------------------------------
+def compute_age(birthdate_str):
+    try:
+        birth = datetime.strptime(birthdate_str, "%Y-%m-%d")
+        today = datetime.today()
+        age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+        return max(age, 0)
+    except:
+        return 0
 
 
-# ----------------------------
-# Chart Generator
-# ----------------------------
-def generate_patient_chart(df, out_png='chart.png'):
-    if df.empty:
-        raise ValueError("DataFrame is empty")
+# ------------------------------------------------
+# Build AGE GROUPS for pie chart
+# ------------------------------------------------
+def age_groups(df):
+    groups = {
+        "0–12": 0,
+        "13–19": 0,
+        "20–35": 0,
+        "36–59": 0,
+        "60+": 0
+    }
 
-    ages = df['age'].fillna(0).astype(int)
-    bins = [0,10,20,30,40,50,60,100]
-    counts, edges = np_histogram(ages, bins)
+    for age in df["age"]:
+        if age <= 12:
+            groups["0–12"] += 1
+        elif age <= 19:
+            groups["13–19"] += 1
+        elif age <= 35:
+            groups["20–35"] += 1
+        elif age <= 59:
+            groups["36–59"] += 1
+        else:
+            groups["60+"] += 1
 
-    fig, ax = plt.subplots(figsize=(6, 3))
-    ax.bar(range(len(counts)), counts)
-    ax.set_xticks(range(len(counts)))
-    ax.set_xticklabels([f"{edges[i]}-{edges[i+1]-1}" for i in range(len(edges)-1)])
-    ax.set_title("Age Distribution")
-    ax.set_ylabel("Patients")
+    return groups
 
+
+# ------------------------------------------------
+# Generate PIE CHART
+# ------------------------------------------------
+def generate_pie_chart(df, out_png="age_pie.png"):
+    groups = age_groups(df)
+    labels = list(groups.keys())
+    sizes = list(groups.values())
+
+    plt.figure(figsize=(5, 5))
+    plt.pie(sizes, labels=labels, autopct='%1.1f%%')
+    plt.title("Age Group Distribution")
     plt.tight_layout()
-    fig.savefig(out_png)
-    plt.close(fig)
-
+    plt.savefig(out_png)
+    plt.close()
     return out_png
 
 
-# ----------------------------
-# **NEW** Clean PDF Report Generator (Platypus)
-# ----------------------------
-def generate_pdf_report(df, pdf_path='report.pdf'):
+# ------------------------------------------------
+# Generate PDF with:
+# ✔ Pie chart
+# ✔ Total count
+# ✔ Clean master list table
+# ------------------------------------------------
+def generate_pdf_report(df, pdf_path="report.pdf"):
     if df is None or df.empty:
-        raise ValueError('DataFrame is empty or None')
+        raise ValueError("No patient data available.")
 
-    # Step 1: Create chart
-    chart_file = 'tmp_chart.png'
-    plt.figure(figsize=(6,3))
-    df['age'].plot(kind='hist', bins=[0,10,20,30,40,50,60,100])
-    plt.title('Age Distribution')
-    plt.xlabel('Age')
-    plt.ylabel('Number of Patients')
-    plt.tight_layout()
-    plt.savefig(chart_file)
-    plt.close()
+    # ---- CLEAN THE DATAFRAME ----
+    # Remove ID column if still present
+    if "id" in df.columns:
+        df = df.drop(columns=["id"])
 
-    # Step 2: Create PDF
-    c = canvas.Canvas(pdf_path, pagesize=A4)
-    width, height = A4
-    c.setFont('Helvetica-Bold', 16)
-    c.drawString(40, height-40, 'Patient Management Report')
+    # Compute ages from birthdate if needed
+    if "birthdate" in df.columns:
+        df["age"] = df["birthdate"].apply(compute_age)
 
-    # Insert chart
-    img = ImageReader(chart_file)
-    c.drawImage(img, 40, height-250, width=500, height=150, preserveAspectRatio=True, mask='auto')
+    # Full name column
+    df["full_name"] = df["first_name"].astype(str) + " " + \
+                      df["middle_name"].astype(str) + " " + \
+                      df["last_name"].astype(str) + " " + \
+                      df["name_ext"].astype(str)
 
-    # Step 3: Add patient table
-    table_data = [df.columns.tolist()] + df.values.tolist()
+    # Select master list columns (customize whenever)
+    table_df = df[[
+        "full_name","birthdate", "age", "contact", "address", "diagnosis", "notes"
+    ]]
+
+    # ---- CREATE CHART ----
+    chart_path = generate_pie_chart(df)
+
+    # ---- PDF DOCUMENT ----
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # ----- TITLE -----
+    story.append(Paragraph("<b>Patient Management Report</b>", styles['Title']))
+    story.append(Spacer(1, 12))
+
+    # ----- TOTAL COUNT -----
+    total_patients = len(df)
+    story.append(Paragraph(f"<b>Total Patients:</b> {total_patients}", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # ----- AGE PIE CHART -----
+    story.append(Paragraph("<b>Age Group Distribution</b>", styles['Heading2']))
+    story.append(Image(chart_path, width=300, height=300))
+    story.append(Spacer(1, 20))
+
+    # ----- MASTER LIST -----
+    story.append(Paragraph("<b>Master Patient List</b>", styles['Heading2']))
+    story.append(Spacer(1, 10))
+
+    table_data = [table_df.columns.tolist()] + table_df.values.tolist()
+
     table = Table(table_data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+    ]))
 
-    # Styling
-    style = TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,0), 6),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-    ])
-    table.setStyle(style)
+    story.append(table)
 
-    # Draw table
-    table.wrapOn(c, width, height)
-    table.drawOn(c, 40, height-450)
-
-    c.showPage()
-    c.save()
+    # ---- GENERATE PDF ----
+    doc.build(story)
     return pdf_path

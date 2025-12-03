@@ -17,6 +17,3 @@ def dataframe_summary(df: pd.DataFrame) -> str:
 
 def save_dataframe_csv(df: pd.DataFrame, path: str = 'patients_df.csv') -> None:
     df.to_csv(path, index=False)
-
-def save_dataframe_json(df: pd.DataFrame, path: str = 'patients_df.json') -> None:
-    df.to_json(path, orient='records', indent=2)
